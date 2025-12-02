@@ -1,0 +1,63 @@
+trigger:
+  - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+# Where we'll store the cached Maven local repo between runs
+variables:
+  MAVEN_CACHE_FOLDER: '$(Pipeline.Workspace)/.m2'
+
+stages:
+
+  # ==========================
+  # BAD PIPELINE (NO CACHE)
+  # ==========================
+  - stage: Slow_NoCache
+    displayName: 'BAD: full rebuild & dependency restore (no cache)'
+    jobs:
+      - job: SlowJob
+        displayName: 'Slow job (always downloads deps)'
+        steps:
+          - checkout: self
+
+          - script: |
+              echo "=== BAD PIPELINE ==="
+              echo "Build ID: $(Build.BuildId)"
+              echo "Agent: $(Agent.MachineName)"
+              echo "Starting mvn clean test with NO cache..."
+              mvn -B clean test
+            displayName: 'mvn clean test (no cache)'
+
+  # ==========================
+  # GOOD PIPELINE (WITH CACHE)
+  # ==========================
+  - stage: Fast_WithCache
+    displayName: 'GOOD: cached dependencies (hash of pom.xml)'
+    dependsOn: Slow_NoCache
+    jobs:
+      - job: FastJob
+        displayName: 'Fast job (reuses cached deps)'
+        steps:
+          - checkout: self
+
+          # Restore (or create) Maven dependency cache.
+          # Key uses OS + pom.xml hash so the cache only busts when dependencies change.
+          - task: Cache@2
+            displayName: 'Restore Maven dependency cache'
+            inputs:
+              key: 'maven | "$(Agent.OS)" | **/pom.xml'
+              restoreKeys: |
+                maven | "$(Agent.OS)"
+              path: $(MAVEN_CACHE_FOLDER)
+
+          - script: |
+              echo "=== GOOD PIPELINE ==="
+              echo "Build ID: $(Build.BuildId)"
+              echo "Agent: $(Agent.MachineName)"
+              echo "Using MAVEN_CACHE_FOLDER=$(MAVEN_CACHE_FOLDER)"
+              mkdir -p $(MAVEN_CACHE_FOLDER)
+              
+              # Use our cached local repo location
+              mvn -B -Dmaven.repo.local=$(MAVEN_CACHE_FOLDER) clean test
+            displayName: 'mvn clean test (with cache)'
