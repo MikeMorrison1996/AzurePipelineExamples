@@ -1,6 +1,6 @@
 
 
-public class Test {
+public class App {
 
     /**
      * Pretend this is "real work" our CI cares about.
